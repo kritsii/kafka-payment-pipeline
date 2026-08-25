@@ -1,0 +1,341 @@
+﻿name: payment
+services:
+  fraud:
+    build:
+      context: C:\Users\Kriti\OneDrive\Desktop\payment\services\fraud
+      dockerfile: Dockerfile
+    container_name: payment-fraud
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-2:9092,kafka-3:9092
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8003/health').read()
+      timeout: 5s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      payment-net: null
+    restart: unless-stopped
+  grafana:
+    container_name: payment-grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+        required: true
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+    image: grafana/grafana:11.0.0
+    networks:
+      payment-net: null
+    ports:
+      - mode: ingress
+        target: 3000
+        published: "3000"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: C:\Users\Kriti\OneDrive\Desktop\payment\monitoring\grafana\provisioning
+        target: /etc/grafana/provisioning
+        read_only: true
+        bind: {}
+      - type: volume
+        source: grafana_data
+        target: /var/lib/grafana
+        volume: {}
+  kafka:
+    container_name: payment-kafka-1
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_LOG_RETENTION_HOURS: "24"
+      KAFKA_NODE_ID: "1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+          >/dev/null 2>&1 || exit 1
+      timeout: 10s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    image: apache/kafka:3.8.0
+    networks:
+      payment-net: null
+    ports:
+      - mode: ingress
+        target: 9092
+        published: "9092"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: kafka_data
+        target: /var/lib/kafka/data
+        volume: {}
+  kafka-2:
+    container_name: payment-kafka-2
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_LOG_RETENTION_HOURS: "24"
+      KAFKA_NODE_ID: "2"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+          >/dev/null 2>&1 || exit 1
+      timeout: 10s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    image: apache/kafka:3.8.0
+    networks:
+      payment-net: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: kafka_data_2
+        target: /var/lib/kafka/data
+        volume: {}
+  kafka-3:
+    container_name: payment-kafka-3
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_LOG_RETENTION_HOURS: "24"
+      KAFKA_NODE_ID: "3"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+          >/dev/null 2>&1 || exit 1
+      timeout: 10s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    image: apache/kafka:3.8.0
+    networks:
+      payment-net: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: kafka_data_3
+        target: /var/lib/kafka/data
+        volume: {}
+  kafka-init:
+    command:
+      - set
+      - -e
+    container_name: payment-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+        required: true
+      kafka-2:
+        condition: service_healthy
+        required: true
+      kafka-3:
+        condition: service_healthy
+        required: true
+    entrypoint:
+      - /bin/sh
+      - -c
+    image: apache/kafka:3.8.0
+    networks:
+      payment-net: null
+  ledger:
+    build:
+      context: C:\Users\Kriti\OneDrive\Desktop\payment\services\ledger
+      dockerfile: Dockerfile
+    container_name: payment-ledger
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-2:9092,kafka-3:9092
+      POSTGRES_DB: paymentdb
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: paymentpass
+      POSTGRES_USER: payment
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8002/health').read()
+      timeout: 5s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      payment-net: null
+    restart: unless-stopped
+  notification:
+    build:
+      context: C:\Users\Kriti\OneDrive\Desktop\payment\services\notification
+      dockerfile: Dockerfile
+    container_name: payment-notification
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-2:9092,kafka-3:9092
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()
+      timeout: 5s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      payment-net: null
+    restart: unless-stopped
+  postgres:
+    container_name: payment-postgres
+    environment:
+      POSTGRES_DB: paymentdb
+      POSTGRES_PASSWORD: paymentpass
+      POSTGRES_USER: payment
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U payment -d paymentdb
+      timeout: 5s
+      interval: 10s
+      retries: 10
+    image: postgres:16-alpine
+    networks:
+      payment-net: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5432"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+        volume: {}
+  producer:
+    build:
+      context: C:\Users\Kriti\OneDrive\Desktop\payment\services\producer
+      dockerfile: Dockerfile
+    container_name: payment-producer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-2:9092,kafka-3:9092
+      POSTGRES_DB: paymentdb
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: paymentpass
+      POSTGRES_USER: payment
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()
+      timeout: 5s
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      payment-net: null
+    ports:
+      - mode: ingress
+        target: 8000
+        published: "8000"
+        protocol: tcp
+    restart: unless-stopped
+  prometheus:
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    container_name: payment-prometheus
+    image: prom/prometheus:v2.54.1
+    networks:
+      payment-net: null
+    ports:
+      - mode: ingress
+        target: 9090
+        published: "9090"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: C:\Users\Kriti\OneDrive\Desktop\payment\monitoring\prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+        read_only: true
+        bind: {}
+      - type: volume
+        source: prometheus_data
+        target: /prometheus
+        volume: {}
+networks:
+  payment-net:
+    name: payment_payment-net
+    driver: bridge
+volumes:
+  grafana_data:
+    name: payment_grafana_data
+  kafka_data:
+    name: payment_kafka_data
+  kafka_data_2:
+    name: payment_kafka_data_2
+  kafka_data_3:
+    name: payment_kafka_data_3
+  postgres_data:
+    name: payment_postgres_data
+  prometheus_data:
+    name: payment_prometheus_data

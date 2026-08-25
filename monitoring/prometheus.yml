@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'producer'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['producer:8000']
+
+  - job_name: 'notification'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['notification:8001']
+
+  - job_name: 'ledger'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ledger:8002']
+
+  - job_name: 'fraud'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['fraud:8003']

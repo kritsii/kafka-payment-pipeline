@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payment.local/schemas/payment_event.schema.json",
+  "title": "Payment Event",
+  "description": "Shared event contract for all payment pipeline Kafka topics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "payment_id",
+    "customer_id",
+    "amount",
+    "currency",
+    "merchant_id",
+    "status"
+  ],
+  "properties": {
+    "payment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "customer_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "amount": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 3
+    },
+    "merchant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["received", "validated", "fraud", "settled"]
+    }
+  }
+}
