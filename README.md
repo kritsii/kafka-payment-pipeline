@@ -21,6 +21,7 @@ docker compose up --build -d
 
 - Producer API: http://localhost:8000
 - FastAPI Swagger: http://localhost:8000/docs
+- Admin DLQ API: http://localhost:8004/docs
 - Grafana: http://localhost:3000 (admin/admin)
 - Prometheus: http://localhost:9090
 - PostgreSQL: localhost:5432
@@ -35,12 +36,15 @@ The stack provisions this topic when it starts:
 | `payments.validated` | 3 | ledger |
 | `payments.settled` | 3 | notification |
 | `payments.fraud` | 3 | notification |
+| `payments.dlq` | 3 | admin |
 
 Events use `payment_id` as the Kafka key, keeping each transaction ordered. The
 `customer_id` identifies the customer for fraud and spending analysis. All services
 share and use the contract in `schemas/payment_event.schema.json`, mounted read-only
 at `/app/schemas/payment_event.schema.json`. Event statuses are `received`,
-`validated`, `fraud`, and `settled`.
+`validated`, `fraud`, `settled`, and `dlq` for failed messages. The fraud and
+ledger consumers use exponential backoff retries and route exhausted failures to
+`payments.dlq` for inspection or replay.
 
 The producer also publishes a generated payment every 5 seconds. Set
 `PAYMENT_GENERATOR_INTERVAL_SECONDS` or `PAYMENT_GENERATOR_SUSPICIOUS_RATE` in
@@ -64,6 +68,18 @@ curl -X POST http://localhost:8000/payments \
     "customer_id": "cust-42",
     "merchant_id": "merchant-7"
   }'
+```
+
+## DLQ and replay flow
+
+The pipeline now includes a `payments.dlq` topic. When fraud or ledger processing fails after the configured retry window, the service publishes a diagnostic record with the original payload, attempt count, source topic, and exception metadata. The admin service consumes that topic and exposes endpoints to inspect the queue or replay a payment back to its original topic for investigation.
+
+Example:
+
+```bash
+curl http://localhost:8004/dlq
+curl http://localhost:8004/dlq/<payment_id>
+curl -X POST http://localhost:8004/dlq/replay/<payment_id>
 ```
 
 ## Monitoring

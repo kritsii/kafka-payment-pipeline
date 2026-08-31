@@ -18,6 +18,7 @@ from starlette.responses import Response
 TOPIC = "payments.raw"
 GENERATOR_INTERVAL_SECONDS = float(os.getenv("PAYMENT_GENERATOR_INTERVAL_SECONDS", "5"))
 SUSPICIOUS_RATE = float(os.getenv("PAYMENT_GENERATOR_SUSPICIOUS_RATE", "0.15"))
+GENERATION_RUN_ID = uuid.uuid4().hex[:8]
 
 app = FastAPI(title="Payment Producer API")
 
@@ -61,31 +62,48 @@ async def publish_payment(payload: PaymentRequest) -> None:
     )
 
 
-def random_payment(previous_payment_id: str | None = None) -> PaymentRequest:
-    suspicious = random.random() < SUSPICIOUS_RATE
-    payment_id = previous_payment_id if suspicious and previous_payment_id else f"pay-{uuid.uuid4()}"
-    amount = round(random.uniform(1001, 5000), 2) if suspicious else round(random.uniform(5, 750), 2)
+def random_payment(sequence_number: int = 0) -> PaymentRequest:
+    scenario_step = sequence_number % 12
+    scenario_id = sequence_number // 12
+    if scenario_step == 0:
+        customer_id = f"demo-behavior-{GENERATION_RUN_ID}-{scenario_id}"
+        amount = 100.0
+    elif scenario_step == 1:
+        customer_id = f"demo-behavior-{GENERATION_RUN_ID}-{scenario_id}"
+        amount = 300.0
+    elif scenario_step in (2, 3, 4):
+        customer_id = f"demo-velocity-{GENERATION_RUN_ID}-{scenario_id}"
+        amount = 50.0 + scenario_step
+    elif scenario_step == 5:
+        customer_id = f"demo-new-user-{GENERATION_RUN_ID}-{scenario_id}"
+        amount = 6000.0
+    else:
+        suspicious = random.random() < SUSPICIOUS_RATE
+        customer_id = f"cust-{random.randint(1000, 9999)}"
+        amount = random.uniform(1001, 5000) if suspicious else random.uniform(5, 750)
+
+    payment_id = f"pay-{uuid.uuid4()}"
     return PaymentRequest(
         payment_id=payment_id,
-        amount=amount,
+        amount=round(amount, 2),
         currency=random.choice(("USD", "EUR", "GBP")),
-        customer_id=f"cust-{random.randint(1000, 9999)}",
+        customer_id=customer_id,
         merchant_id=f"merchant-{random.randint(100, 999)}",
     )
 
 
 async def generate_payments() -> None:
-    previous_payment_id: str | None = None
+    sequence_number = 0
     while True:
-        payment = random_payment(previous_payment_id)
+        payment = random_payment(sequence_number)
         try:
             await publish_payment(payment)
             PAYMENT_SUCCESS.inc()
-            previous_payment_id = payment.payment_id
             print(f"[producer] Published {payment.payment_id} (${payment.amount:.2f})")
         except Exception as exc:  # pragma: no cover
             PAYMENT_ERRORS.inc()
             print(f"[producer] Failed to publish generated payment: {exc}")
+        sequence_number += 1
         await asyncio.sleep(GENERATOR_INTERVAL_SECONDS)
 
 

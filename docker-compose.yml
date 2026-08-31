@@ -102,7 +102,7 @@ services:
       kafka-3:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
-    command: ["set -e; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.raw --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.validated --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.settled --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.fraud --partitions 3 --replication-factor 3"]
+    command: ["set -e; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.raw --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.validated --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.settled --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.fraud --partitions 3 --replication-factor 3; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092,kafka-2:9092,kafka-3:9092 --create --if-not-exists --topic payments.dlq --partitions 3 --replication-factor 3"]
     networks:
       - payment-net
 
@@ -221,6 +221,21 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    networks:
+      - payment-net
+
+  admin:
+    build:
+      context: ./services/admin
+    container_name: payment-admin
+    restart: unless-stopped
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092,kafka-2:9092,kafka-3:9092
+    ports:
+      - "8004:8004"
     networks:
       - payment-net
 
