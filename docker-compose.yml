@@ -239,6 +239,36 @@ services:
     networks:
       - payment-net
 
+  dashboard:
+    build:
+      context: ./services/dashboard
+    container_name: payment-dashboard-api
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+    ports:
+      - "8005:8005"
+    networks:
+      - payment-net
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.8.0
+    container_name: payment-kafka-exporter
+    restart: unless-stopped
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    command:
+      - --kafka.server=kafka:9092
+      - --kafka.server=kafka-2:9092
+      - --kafka.server=kafka-3:9092
+    ports:
+      - "9308:9308"
+    networks:
+      - payment-net
+
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: payment-prometheus

@@ -21,3 +21,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ['fraud:8003']
+
+  - job_name: 'kafka-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['kafka-exporter:9308']

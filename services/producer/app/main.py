@@ -12,7 +12,7 @@ from aiokafka import AIOKafkaProducer
 from fastapi import FastAPI, HTTPException
 from jsonschema import ValidationError, validate
 from pydantic import BaseModel, Field
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
 
 TOPIC = "payments.raw"
@@ -26,6 +26,7 @@ PAYMENT_REQUESTS = Counter("payment_requests_total", "Total payment requests rec
 PAYMENT_SUCCESS = Counter("payment_success_total", "Successful payment events produced")
 PAYMENT_ERRORS = Counter("payment_errors_total", "Failed payment events")
 PAYMENT_LATENCY = Histogram("payment_processing_latency_seconds", "Latency for payment processing")
+PAYMENT_PENDING = Gauge("payment_pending", "Payments currently being published")
 
 producer: AIOKafkaProducer | None = None
 generator_task: asyncio.Task[None] | None = None
@@ -96,13 +97,18 @@ async def generate_payments() -> None:
     sequence_number = 0
     while True:
         payment = random_payment(sequence_number)
+        PAYMENT_REQUESTS.inc()
+        PAYMENT_PENDING.inc()
         try:
-            await publish_payment(payment)
+            with PAYMENT_LATENCY.time():
+                await publish_payment(payment)
             PAYMENT_SUCCESS.inc()
             print(f"[producer] Published {payment.payment_id} (${payment.amount:.2f})")
         except Exception as exc:  # pragma: no cover
             PAYMENT_ERRORS.inc()
             print(f"[producer] Failed to publish generated payment: {exc}")
+        finally:
+            PAYMENT_PENDING.dec()
         sequence_number += 1
         await asyncio.sleep(GENERATOR_INTERVAL_SECONDS)
 
@@ -138,18 +144,22 @@ async def metrics() -> Response:
 @app.post("/payments")
 async def create_payment(payload: PaymentRequest) -> dict[str, Any]:
     PAYMENT_REQUESTS.inc()
+    PAYMENT_PENDING.inc()
     with PAYMENT_LATENCY.time():
-        if producer is None:
-            PAYMENT_ERRORS.inc()
-            raise HTTPException(status_code=503, detail="Kafka producer unavailable")
-
         try:
+            if producer is None:
+                PAYMENT_ERRORS.inc()
+                raise HTTPException(status_code=503, detail="Kafka producer unavailable")
             await publish_payment(payload)
             PAYMENT_SUCCESS.inc()
             return {"status": "accepted", "payment_id": payload.payment_id, "topic": TOPIC}
         except ValidationError as exc:
             PAYMENT_ERRORS.inc()
             raise HTTPException(status_code=500, detail=f"Invalid payment event: {exc.message}") from exc
+        except HTTPException:
+            raise
         except Exception as exc:  # pragma: no cover
             PAYMENT_ERRORS.inc()
             raise HTTPException(status_code=500, detail=f"Failed to publish payment: {exc}") from exc
+        finally:
+            PAYMENT_PENDING.dec()

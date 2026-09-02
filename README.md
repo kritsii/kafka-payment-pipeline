@@ -1,6 +1,7 @@
 # Payment Processing Pipeline
 
-This project creates an end-to-end payment processing pipeline using 8 containers:
+This project creates an end-to-end payment processing pipeline with a React/MUI
+dashboard and FastAPI dashboard API:
 
 - Kafka (KRaft mode)
 - Producer (FastAPI)
@@ -10,6 +11,8 @@ This project creates an end-to-end payment processing pipeline using 8 container
 - PostgreSQL
 - Prometheus
 - Grafana
+- Dashboard API (FastAPI)
+- Dashboard (React/MUI)
 
 ## Quick Start
 
@@ -22,6 +25,8 @@ docker compose up --build -d
 - Producer API: http://localhost:8000
 - FastAPI Swagger: http://localhost:8000/docs
 - Admin DLQ API: http://localhost:8004/docs
+- Dashboard API: http://localhost:8005/docs
+- Dashboard UI: run `npm install && npm run dev` inside `frontend/`, then open http://localhost:5173
 - Grafana: http://localhost:3000 (admin/admin)
 - Prometheus: http://localhost:9090
 - PostgreSQL: localhost:5432
