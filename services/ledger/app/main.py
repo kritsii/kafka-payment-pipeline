@@ -131,6 +131,20 @@ async def process_payment(payload: dict) -> None:
         key=payload["payment_id"].encode("utf-8"),
         value=json.dumps(payload).encode("utf-8"),
     )
+    conn = psycopg.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        dbname=os.getenv("POSTGRES_DB", "paymentdb"),
+        user=os.getenv("POSTGRES_USER", "payment"),
+        password=os.getenv("POSTGRES_PASSWORD", "paymentpass"),
+        port=5432,
+    )
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE payment_ledger SET status = %s WHERE payment_id = %s",
+            ("settled", payload["payment_id"]),
+        )
+    conn.commit()
+    conn.close()
     LEDGER_WRITES.inc()
     print(f"[ledger] Recorded payment {payload.get('payment_id')}")
 

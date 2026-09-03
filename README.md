@@ -10,7 +10,6 @@ dashboard and FastAPI dashboard API:
 - Fraud consumer
 - PostgreSQL
 - Prometheus
-- Grafana
 - Dashboard API (FastAPI)
 - Dashboard (React/MUI)
 
@@ -27,7 +26,6 @@ docker compose up --build -d
 - Admin DLQ API: http://localhost:8004/docs
 - Dashboard API: http://localhost:8005/docs
 - Dashboard UI: run `npm install && npm run dev` inside `frontend/`, then open http://localhost:5173
-- Grafana: http://localhost:3000 (admin/admin)
 - Prometheus: http://localhost:9090
 - PostgreSQL: localhost:5432
 
@@ -47,7 +45,7 @@ Events use `payment_id` as the Kafka key, keeping each transaction ordered. The
 `customer_id` identifies the customer for fraud and spending analysis. All services
 share and use the contract in `schemas/payment_event.schema.json`, mounted read-only
 at `/app/schemas/payment_event.schema.json`. Event statuses are `received`,
-`validated`, `fraud`, `settled`, and `dlq` for failed messages. The fraud and
+`validated`, `fraud`, `settled`, and `dlq` for failed messages. payThe fraud and
 ledger consumers use exponential backoff retries and route exhausted failures to
 `payments.dlq` for inspection or replay.
 
@@ -89,7 +87,7 @@ curl -X POST http://localhost:8004/dlq/replay/<payment_id>
 
 ## Monitoring
 
-Prometheus scrapes metrics from the producer and stream consumers. Grafana is provisioned with a Prometheus datasource.
+Prometheus scrapes metrics from the producer and stream consumers.
 
 ## Shutdown
 

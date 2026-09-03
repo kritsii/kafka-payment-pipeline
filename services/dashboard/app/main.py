@@ -4,10 +4,60 @@ import time
 from datetime import datetime, timezone
 
 import httpx
+import psycopg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
+
+
+def query_transactions(limit: int = 100) -> list[dict[str, object]]:
+    try:
+        with psycopg.connect(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            dbname=os.getenv("POSTGRES_DB", "paymentdb"),
+            user=os.getenv("POSTGRES_USER", "payment"),
+            password=os.getenv("POSTGRES_PASSWORD", "paymentpass"),
+            port=5432,
+        ) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT payment_id, amount, currency, customer_id, merchant_id,
+                           status, created_at
+                    FROM payment_ledger
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cursor.fetchall()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        transactions = []
+        for payment_id, amount, currency, customer_id, merchant_id, status, created_at in rows:
+            age_minutes = max(0, int((now - created_at).total_seconds() // 60))
+            display_status = "Settled" if status == "settled" else "Processing"
+            stage = 5 if status == "settled" else 4
+            transactions.append(
+                {
+                    "id": payment_id,
+                    "user": customer_id,
+                    "merchant": merchant_id,
+                    "amount": float(amount),
+                    "currency": currency,
+                    "method": "Unknown",
+                    "status": display_status,
+                    "stage": stage,
+                    "retries": 0,
+                    "ledger": "Posted" if status == "settled" else "Pending",
+                    "notification": "Sent" if status == "settled" else "Queued",
+                    "time": f"{age_minutes} min ago",
+                    "ageMinutes": age_minutes,
+                }
+            )
+        return transactions
+    except (psycopg.Error, TypeError, ValueError):
+        return []
 
 app = FastAPI(title="Payment Dashboard API")
 app.add_middleware(
@@ -103,6 +153,7 @@ async def overview_metrics() -> dict[str, object]:
             "successful": successful,
             "failed": failed,
             "pending": pending or 0,
+            "items": query_transactions(),
         },
         "rates": {
             "success": (successful / total * 100) if total else 0,
