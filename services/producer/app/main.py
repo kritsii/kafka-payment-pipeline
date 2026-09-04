@@ -20,6 +20,20 @@ GENERATOR_INTERVAL_SECONDS = float(os.getenv("PAYMENT_GENERATOR_INTERVAL_SECONDS
 SUSPICIOUS_RATE = float(os.getenv("PAYMENT_GENERATOR_SUSPICIOUS_RATE", "0.15"))
 GENERATION_RUN_ID = uuid.uuid4().hex[:8]
 
+CUSTOMERS = (
+    "cust-1042", "cust-1187", "cust-2034", "cust-2471", "cust-3098",
+    "cust-4126", "cust-5089", "cust-6174", "cust-7215", "cust-8360",
+)
+MERCHANTS = (
+    ("merchant-northstar-market", "USD"),
+    ("merchant-atlas-cloud", "USD"),
+    ("merchant-lumen-travel", "EUR"),
+    ("merchant-harbor-supply", "GBP"),
+    ("merchant-civic-pharmacy", "USD"),
+    ("merchant-fieldhouse-fitness", "USD"),
+    ("merchant-roam-and-stay", "EUR"),
+)
+
 app = FastAPI(title="Payment Producer API")
 
 PAYMENT_REQUESTS = Counter("payment_requests_total", "Total payment requests received")
@@ -65,31 +79,34 @@ async def publish_payment(payload: PaymentRequest) -> None:
 
 def random_payment(sequence_number: int = 0) -> PaymentRequest:
     scenario_step = sequence_number % 12
-    scenario_id = sequence_number // 12
+    customer_id = random.choice(CUSTOMERS)
+    merchant_id, currency = random.choice(MERCHANTS)
     if scenario_step == 0:
-        customer_id = f"demo-behavior-{GENERATION_RUN_ID}-{scenario_id}"
-        amount = 100.0
+        customer_id = "cust-1042"
+        amount = round(random.uniform(28, 85), 2)
     elif scenario_step == 1:
-        customer_id = f"demo-behavior-{GENERATION_RUN_ID}-{scenario_id}"
-        amount = 300.0
+        customer_id = "cust-1042"
+        amount = round(random.uniform(260, 520), 2)
     elif scenario_step in (2, 3, 4):
-        customer_id = f"demo-velocity-{GENERATION_RUN_ID}-{scenario_id}"
-        amount = 50.0 + scenario_step
+        customer_id = "cust-7215"
+        amount = round(random.uniform(18, 75), 2)
     elif scenario_step == 5:
-        customer_id = f"demo-new-user-{GENERATION_RUN_ID}-{scenario_id}"
-        amount = 6000.0
+        customer_id = f"cust-new-{GENERATION_RUN_ID}"
+        amount = round(random.uniform(2200, 6800), 2)
     else:
         suspicious = random.random() < SUSPICIOUS_RATE
-        customer_id = f"cust-{random.randint(1000, 9999)}"
-        amount = random.uniform(1001, 5000) if suspicious else random.uniform(5, 750)
+        if suspicious:
+            amount = random.triangular(900, 3200, 1250)
+        else:
+            amount = random.triangular(8, 850, 95)
 
     payment_id = f"pay-{uuid.uuid4()}"
     return PaymentRequest(
         payment_id=payment_id,
         amount=round(amount, 2),
-        currency=random.choice(("USD", "EUR", "GBP")),
+        currency=currency,
         customer_id=customer_id,
-        merchant_id=f"merchant-{random.randint(100, 999)}",
+        merchant_id=merchant_id,
     )
 
 
