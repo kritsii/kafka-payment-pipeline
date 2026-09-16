@@ -22,18 +22,23 @@ async def consume() -> None:
         *TOPICS,
         bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
         group_id="notification-group",
     )
     await consumer.start()
     try:
         async for msg in consumer:
-            payload = json.loads(msg.value.decode("utf-8"))
-            NOTIFY_COUNT.inc()
-            print(
-                f"[notification] Sent SMS/email for {msg.topic} payment "
-                f"{payload.get('payment_id')}"
-            )
+            try:
+                payload = json.loads(msg.value.decode("utf-8"))
+                NOTIFY_COUNT.inc()
+                print(
+                    f"[notification] Sent SMS/email for {msg.topic} payment "
+                    f"{payload.get('payment_id')}"
+                )
+                await consumer.commit()
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                await consumer.commit()
+                print(f"[notification] Dropped malformed event: {exc}")
     finally:
         await consumer.stop()
 

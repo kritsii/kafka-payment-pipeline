@@ -18,6 +18,8 @@ from starlette.responses import Response
 TOPIC = "payments.raw"
 GENERATOR_INTERVAL_SECONDS = float(os.getenv("PAYMENT_GENERATOR_INTERVAL_SECONDS", "5"))
 SUSPICIOUS_RATE = float(os.getenv("PAYMENT_GENERATOR_SUSPICIOUS_RATE", "0.15"))
+DLQ_SCENARIO_INTERVAL = int(os.getenv("PAYMENT_GENERATOR_DLQ_INTERVAL", "12"))
+DLQ_SIMULATION_MERCHANT = os.getenv("PAYMENT_DLQ_SIMULATION_MERCHANT", "merchant-dlq-simulation")
 GENERATION_RUN_ID = uuid.uuid4().hex[:8]
 
 CUSTOMERS = (
@@ -81,7 +83,11 @@ def random_payment(sequence_number: int = 0) -> PaymentRequest:
     scenario_step = sequence_number % 12
     customer_id = random.choice(CUSTOMERS)
     merchant_id, currency = random.choice(MERCHANTS)
-    if scenario_step == 0:
+    if DLQ_SCENARIO_INTERVAL > 0 and sequence_number % DLQ_SCENARIO_INTERVAL == DLQ_SCENARIO_INTERVAL - 1:
+        merchant_id = DLQ_SIMULATION_MERCHANT
+        currency = "USD"
+        amount = 42.00
+    elif scenario_step == 0:
         customer_id = "cust-1042"
         amount = round(random.uniform(28, 85), 2)
     elif scenario_step == 1:

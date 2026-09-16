@@ -16,6 +16,10 @@ DLQ_TOPIC = "payments.dlq"
 RETRY_MAX_ATTEMPTS = 4
 RETRY_BASE_DELAY_SECONDS = 1.0
 
+
+class DlqRoutedError(RuntimeError):
+    pass
+
 app = FastAPI(title="Ledger Service")
 LEDGER_WRITES = Counter("ledger_writes_total", "Ledger records written")
 producer: AIOKafkaProducer | None = None
@@ -34,16 +38,20 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS payment_ledger (
                 id SERIAL PRIMARY KEY,
-                payment_id TEXT NOT NULL,
+                payment_id TEXT NOT NULL UNIQUE,
                 amount NUMERIC(12,2) NOT NULL,
                 currency TEXT NOT NULL,
                 customer_id TEXT NOT NULL,
                 merchant_id TEXT NOT NULL,
                 status TEXT NOT NULL,
+                risk_score INTEGER,
+                risk_reasons JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        cur.execute("ALTER TABLE payment_ledger ADD COLUMN IF NOT EXISTS risk_score INTEGER")
+        cur.execute("ALTER TABLE payment_ledger ADD COLUMN IF NOT EXISTS risk_reasons JSONB")
     conn.commit()
     conn.close()
 
@@ -91,7 +99,9 @@ async def process_with_retry(
                         f"[ledger] Routed payment {payload.get('payment_id')} to {DLQ_TOPIC} "
                         f"after {attempt} attempts"
                     )
-                raise
+                raise DlqRoutedError(
+                    f"Payment {payload.get('payment_id')} routed to {DLQ_TOPIC}"
+                ) from exc
             delay = base_delay * (2 ** (attempt - 1))
             if delay > 0:
                 await asyncio.sleep(delay)
@@ -111,18 +121,30 @@ async def process_payment(payload: dict) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO payment_ledger (payment_id, amount, currency, customer_id, merchant_id, status)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            UPDATE payment_ledger
+            SET status = %s, risk_score = %s, risk_reasons = %s
+            WHERE payment_id = %s
             """,
-            (
-                payload.get("payment_id"),
-                payload.get("amount"),
-                payload.get("currency"),
-                payload.get("customer_id"),
-                payload.get("merchant_id"),
-                payload.get("status", "received"),
-            ),
+            ("settled", payload.get("risk_score"), json.dumps(payload.get("risk_reasons", [])), payload["payment_id"]),
         )
+        if cur.rowcount == 0:
+            cur.execute(
+                """
+                INSERT INTO payment_ledger
+                    (payment_id, amount, currency, customer_id, merchant_id, status, risk_score, risk_reasons)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    payload["payment_id"],
+                    payload["amount"],
+                    payload["currency"],
+                    payload["customer_id"],
+                    payload["merchant_id"],
+                    "settled",
+                    payload.get("risk_score"),
+                    json.dumps(payload.get("risk_reasons", [])),
+                ),
+            )
     conn.commit()
     conn.close()
     payload["status"] = "settled"
@@ -131,20 +153,6 @@ async def process_payment(payload: dict) -> None:
         key=payload["payment_id"].encode("utf-8"),
         value=json.dumps(payload).encode("utf-8"),
     )
-    conn = psycopg.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        dbname=os.getenv("POSTGRES_DB", "paymentdb"),
-        user=os.getenv("POSTGRES_USER", "payment"),
-        password=os.getenv("POSTGRES_PASSWORD", "paymentpass"),
-        port=5432,
-    )
-    with conn.cursor() as cur:
-        cur.execute(
-            "UPDATE payment_ledger SET status = %s WHERE payment_id = %s",
-            ("settled", payload["payment_id"]),
-        )
-    conn.commit()
-    conn.close()
     LEDGER_WRITES.inc()
     print(f"[ledger] Recorded payment {payload.get('payment_id')}")
 
@@ -154,13 +162,19 @@ async def consume() -> None:
         TOPIC,
         bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
         group_id="ledger-group",
     )
     await consumer.start()
     try:
         async for msg in consumer:
-            payload = json.loads(msg.value.decode("utf-8"))
+            payload = {}
+            try:
+                payload = json.loads(msg.value.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                await consumer.commit()
+                print(f"[ledger] Dropped malformed event: {exc}")
+                continue
             try:
                 await process_with_retry(
                     lambda payload=payload: process_payment(payload),
@@ -168,6 +182,10 @@ async def consume() -> None:
                     original_topic=TOPIC,
                     payload=payload,
                 )
+                await consumer.commit()
+            except DlqRoutedError as exc:
+                await consumer.commit()
+                print(f"[ledger] {exc}")
             except Exception as exc:
                 print(f"[ledger] Failed to process payment {payload.get('payment_id')}: {exc}")
     finally:

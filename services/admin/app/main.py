@@ -1,16 +1,24 @@
 import asyncio
 import json
 import os
+import uuid
 from collections import defaultdict
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
 from starlette.responses import Response
 
 DLQ_TOPIC = "payments.dlq"
 
 app = FastAPI(title="Payment Admin Service")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 DLQ_REPLAYED = Counter("dlq_replayed_total", "Number of DLQ messages replayed")
 DLQ_INSPECTED = Counter("dlq_inspected_total", "Number of DLQ messages inspected")
 
@@ -26,17 +34,22 @@ async def consume_dlq() -> None:
         DLQ_TOPIC,
         bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
-        group_id="admin-dlq-group",
+        enable_auto_commit=False,
+        group_id=f"admin-dlq-{uuid.uuid4().hex}",
     )
     await consumer.start()
     try:
         async for msg in consumer:
-            payload = json.loads(msg.value.decode("utf-8"))
-            seen_dlq_messages.append(payload)
-            messages_by_payment_id[str(payload.get("payment_id", "unknown"))].append(payload)
-            DLQ_INSPECTED.inc()
-            print(f"[admin] DLQ message observed for payment {payload.get('payment_id')}")
+            try:
+                payload = json.loads(msg.value.decode("utf-8"))
+                seen_dlq_messages.append(payload)
+                messages_by_payment_id[str(payload.get("payment_id", "unknown"))].append(payload)
+                DLQ_INSPECTED.inc()
+                print(f"[admin] DLQ message observed for payment {payload.get('payment_id')}")
+                await consumer.commit()
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                await consumer.commit()
+                print(f"[admin] Dropped malformed DLQ event: {exc}")
     finally:
         await consumer.stop()
 

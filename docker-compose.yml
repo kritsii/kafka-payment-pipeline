@@ -76,6 +76,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PAYMENT_GENERATOR_INTERVAL_SECONDS: 5
       PAYMENT_GENERATOR_SUSPICIOUS_RATE: 0.15
+      PAYMENT_GENERATOR_DLQ_INTERVAL: 12
+      PAYMENT_DLQ_SIMULATION_MERCHANT: merchant-dlq-simulation
       POSTGRES_HOST: postgres
       POSTGRES_DB: paymentdb
       POSTGRES_USER: payment
@@ -124,6 +126,7 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PAYMENT_DLQ_SIMULATION_MERCHANT: merchant-dlq-simulation
       POSTGRES_HOST: postgres
       POSTGRES_DB: paymentdb
       POSTGRES_USER: payment
@@ -147,8 +150,14 @@ services:
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: paymentdb
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: paymentpass
     volumes:
       - ./schemas/payment_event.schema.json:/app/schemas/payment_event.schema.json:ro
     healthcheck:
@@ -216,12 +225,12 @@ services:
     restart: unless-stopped
     ports:
       - "9090:9090"
+    entrypoint: ["/bin/sh", "-c"]
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
+      - rm -rf /prometheus/* && exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
     networks:
       - payment-net
 

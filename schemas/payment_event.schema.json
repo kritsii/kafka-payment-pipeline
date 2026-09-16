@@ -37,7 +37,16 @@
     },
     "status": {
       "type": "string",
-      "enum": ["received", "validated", "fraud", "settled"]
+      "enum": ["received", "validated", "review", "rejected", "fraud", "settled"]
+    },
+    "risk_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "risk_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
     }
   }
 }
